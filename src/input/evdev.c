@@ -82,6 +82,9 @@ static const int hat_constants[3][3] = {{HAT_UP | HAT_LEFT, HAT_UP, HAT_UP | HAT
 
 #define set_hat(flags, flag, hat, hat_flag) flags = (hat & hat_flag) == hat_flag ? flags | flag : flags & ~flag
 
+#define MAX(x, y) (((x) > (y)) ? (x) : (y))
+#define MIN(x, y) (((x) < (y)) ? (x) : (y))
+
 static struct input_device* devices = NULL;
 static int numDevices = 0;
 static int assignedControllerIds = 0;
@@ -110,13 +113,41 @@ static int evdev_get_map(int* map, int length, int value) {
   return -1;
 }
 
+static int offset_min(int value, int code) {
+  switch (code) {
+    case ABS_X:
+      return value + 205;
+    case ABS_Y:
+      return value + 205;
+    case ABS_Z:
+      return value + 265;
+    case ABS_RZ:
+      return value + 265;
+  }
+  return value;
+}
+
+static int offset_max(int value, int code) {
+  switch (code) {
+    case ABS_X:
+      return value - 205;
+    case ABS_Y:
+      return value - 205;
+    case ABS_Z:
+      return value - 265;
+    case ABS_RZ:
+      return value - 265;
+  }
+  return value;
+}
+
 static bool evdev_init_parms(struct input_device *dev, struct input_abs_parms *parms, int code) {
   int abs = evdev_get_map(dev->abs_map, ABS_MAX, code);
 
   if (abs >= 0) {
     parms->flat = libevdev_get_abs_flat(dev->dev, abs);
-    parms->min = libevdev_get_abs_minimum(dev->dev, abs);
-    parms->max = libevdev_get_abs_maximum(dev->dev, abs);
+    parms->min = offset_min(libevdev_get_abs_minimum(dev->dev, abs), abs);
+    parms->max = offset_max(libevdev_get_abs_maximum(dev->dev, abs), abs);
     if (parms->flat == 0 && parms->min == 0 && parms->max == 0)
       return false;
 
@@ -145,16 +176,17 @@ static short evdev_convert_value(struct input_event *ev, struct input_device *de
     return 0;
   }
 
-  if (abs(ev->value - parms->avg) < parms->flat)
+  int value = MAX(MIN(ev->value, parms->max), parms->min);
+  if (abs(value - parms->avg) < parms->flat)
     return 0;
-  else if (ev->value > parms->max)
+  else if (value > parms->max)
     return reverse?SHRT_MIN:SHRT_MAX;
-  else if (ev->value < parms->min)
+  else if (value < parms->min)
     return reverse?SHRT_MAX:SHRT_MIN;
   else if (reverse)
-    return (long long)(parms->max - (ev->value<parms->avg?parms->flat*2:0) - ev->value) * (SHRT_MAX-SHRT_MIN) / (parms->max-parms->min-parms->flat*2) + SHRT_MIN;
+    return (long long)(parms->max - (value<parms->avg?parms->flat*2:0) - value) * (SHRT_MAX-SHRT_MIN) / (parms->max-parms->min-parms->flat*2) + SHRT_MIN;
   else
-    return (long long)(ev->value - (ev->value>parms->avg?parms->flat*2:0) - parms->min) * (SHRT_MAX-SHRT_MIN) / (parms->max-parms->min-parms->flat*2) + SHRT_MIN;
+    return (long long)(value - (value>parms->avg?parms->flat*2:0) - parms->min) * (SHRT_MAX-SHRT_MIN) / (parms->max-parms->min-parms->flat*2) + SHRT_MIN;
 }
 
 static char evdev_convert_value_byte(struct input_event *ev, struct input_device *dev, struct input_abs_parms *parms) {
@@ -163,12 +195,13 @@ static char evdev_convert_value_byte(struct input_event *ev, struct input_device
     return 0;
   }
 
-  if (abs(ev->value-parms->min)<parms->flat)
+  int value = MAX(MIN(ev->value, parms->max), parms->min);
+  if (abs(value-parms->min)<parms->flat)
     return 0;
-  else if (ev->value>parms->max)
+  else if (value>parms->max)
     return UCHAR_MAX;
   else
-    return (ev->value - parms->flat - parms->min) * UCHAR_MAX / (parms->diff - parms->flat);
+    return (value - parms->flat - parms->min) * UCHAR_MAX / (parms->diff - parms->flat);
 }
 
 static bool evdev_handle_event(struct input_event *ev, struct input_device *dev) {
