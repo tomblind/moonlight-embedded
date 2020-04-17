@@ -58,6 +58,7 @@ struct input_device {
   bool is_keyboard;
   bool is_mouse;
   bool is_touchscreen;
+  int rotate;
   struct mapping* map;
   int key_map[KEY_MAX];
   int abs_map[ABS_MAX];
@@ -216,7 +217,20 @@ static bool evdev_handle_event(struct input_event *ev, struct input_device *dev)
   switch (ev->type) {
   case EV_SYN:
     if (dev->mouseDeltaX != 0 || dev->mouseDeltaY != 0) {
-      LiSendMouseMoveEvent(dev->mouseDeltaX, dev->mouseDeltaY);
+      switch (dev->rotate) {
+      case 90:
+        LiSendMouseMoveEvent(dev->mouseDeltaY, -dev->mouseDeltaX);
+        break;
+      case 180:
+        LiSendMouseMoveEvent(-dev->mouseDeltaX, -dev->mouseDeltaY);
+        break;
+      case 270:
+        LiSendMouseMoveEvent(-dev->mouseDeltaY, dev->mouseDeltaX);
+        break;
+      default:
+        LiSendMouseMoveEvent(dev->mouseDeltaX, dev->mouseDeltaY);
+        break;
+      }
       dev->mouseDeltaX = 0;
       dev->mouseDeltaY = 0;
     }
@@ -525,7 +539,7 @@ static int evdev_handle(int fd) {
   return LOOP_OK;
 }
 
-void evdev_create(const char* device, struct mapping* mappings, bool verbose) {
+void evdev_create(const char* device, struct mapping* mappings, bool verbose, int rotate) {
   int fd = open(device, O_RDWR|O_NONBLOCK);
   if (fd <= 0) {
     fprintf(stderr, "Failed to open device %s\n", device);
@@ -609,6 +623,7 @@ void evdev_create(const char* device, struct mapping* mappings, bool verbose) {
   devices[dev].is_touchscreen = is_touchscreen;
   devices[dev].touchStartX = NO_TOUCH;
   devices[dev].touchStartY = NO_TOUCH;
+  devices[dev].rotate = rotate;
 
   int nbuttons = 0;
   for (int i = BTN_JOYSTICK; i < KEY_MAX; ++i) {
