@@ -59,6 +59,7 @@ struct input_device {
   bool is_mouse;
   int rotate;
   bool is_touchscreen;
+  bool absTouch;
   struct mapping* map;
   int key_map[KEY_MAX];
   int abs_map[ABS_MAX];
@@ -66,7 +67,7 @@ struct input_device {
   int fd;
   char modifiers;
   __s32 mouseDeltaX, mouseDeltaY, mouseScroll;
-  __s32 touchDownX, touchDownY, touchX, touchY;
+  __s32 touchDownX, touchDownY, touchX, touchY, touchOffsetX, touchOffsetY, touchRefWidth, touchRefHeight;
   struct timeval touchDownTime;
   short controllerId;
   int haptic_effect_id;
@@ -223,6 +224,30 @@ static bool evdev_handle_event(struct input_event *ev, struct input_device *dev)
       LiSendMultiControllerEvent(dev->controllerId, assignedControllerIds, dev->buttonFlags, dev->leftTrigger, dev->rightTrigger, dev->leftStickX, dev->leftStickY, dev->rightStickX, dev->rightStickY);
       dev->gamepadModified = false;
     }
+    if (dev->absTouch && dev->touchX != TOUCH_UP && dev->touchY != TOUCH_UP) {
+      int touchX, touchY;
+      switch (dev->rotate) {
+      case 90:
+        touchX = dev->touchY + dev->touchOffsetY;
+        touchY = dev->touchRefHeight - (dev->touchX + dev->touchOffsetX);
+        break;
+      case 180:
+        touchX = dev->touchRefWidth - (dev->touchX + dev->touchOffsetX);
+        touchY = dev->touchRefHeight - (dev->touchY + dev->touchOffsetY);
+        break;
+      case 270:
+        touchX = dev->touchRefWidth - (dev->touchY + dev->touchOffsetY);
+        touchY = dev->touchX + dev->touchOffsetX;
+        break;
+      default:
+        touchX = dev->touchX + dev->touchOffsetX;
+        touchY = dev->touchY + dev->touchOffsetY;
+        break;
+      }
+      if (touchX > 0 && touchY > 0 && touchX < dev->touchRefWidth && touchY < dev->touchRefHeight) {
+        LiSendMousePositionEvent(touchX, touchY, dev->touchRefWidth, dev->touchRefHeight);
+      }
+    }
     break;
   case EV_KEY:
     if (ev->code < sizeof(keyCodes)/sizeof(keyCodes[0])) {
@@ -375,22 +400,22 @@ static bool evdev_handle_event(struct input_event *ev, struct input_device *dev)
     if (dev->is_touchscreen) {
       switch (ev->code) {
       case ABS_X:
-        if (dev->touchDownX == TOUCH_UP) {
-          dev->touchDownX = ev->value;
-          dev->touchX = ev->value;
-        } else {
-          dev->mouseDeltaX += (ev->value - dev->touchX);
-          dev->touchX = ev->value;
+        if (!dev->absTouch) {
+          if (dev->touchDownX == TOUCH_UP)
+            dev->touchDownX = ev->value;
+          else
+            dev->mouseDeltaX += (ev->value - dev->touchX);
         }
+        dev->touchX = ev->value;
         break;
       case ABS_Y:
-        if (dev->touchDownY == TOUCH_UP) {
-          dev->touchDownY = ev->value;
-          dev->touchY = ev->value;
-        } else {
-          dev->mouseDeltaY += (ev->value - dev->touchY);
-          dev->touchY = ev->value;
+        if (!dev->absTouch) {
+          if (dev->touchDownY == TOUCH_UP)
+            dev->touchDownY = ev->value;
+          else
+            dev->mouseDeltaY += (ev->value - dev->touchY);
         }
+        dev->touchY = ev->value;
         break;
       }
       break;
@@ -522,7 +547,7 @@ static int evdev_handle(int fd) {
   return LOOP_OK;
 }
 
-void evdev_create(const char* device, struct mapping* mappings, bool verbose, int rotate) {
+void evdev_create(const char* device, struct mapping* mappings, bool verbose, struct input_config* config) {
   int fd = open(device, O_RDWR|O_NONBLOCK);
   if (fd <= 0) {
     fprintf(stderr, "Failed to open device %s\n", device);
@@ -603,10 +628,43 @@ void evdev_create(const char* device, struct mapping* mappings, bool verbose, in
   memset(&devices[dev].abs_map, -2, sizeof(devices[dev].abs_map));
   devices[dev].is_keyboard = is_keyboard;
   devices[dev].is_mouse = is_mouse;
-  devices[dev].rotate = rotate;
+  devices[dev].rotate = config->rotate;
   devices[dev].is_touchscreen = is_touchscreen;
+  devices[dev].absTouch = config->absTouch;
   devices[dev].touchDownX = TOUCH_UP;
   devices[dev].touchDownY = TOUCH_UP;
+
+  if (is_touchscreen && config->absTouch) {
+    int touchOffsetX = -libevdev_get_abs_minimum(evdev, ABS_X);
+    int touchWidth = libevdev_get_abs_maximum(evdev, ABS_X) + touchOffsetX;
+    int touchOffsetY = -libevdev_get_abs_minimum(evdev, ABS_Y);
+    int touchHeight = libevdev_get_abs_maximum(evdev, ABS_Y) + touchOffsetY;
+    float touchAspect = (float)touchWidth / (float)touchHeight;
+    float streamAspect;
+    if (config->rotate == 90 || config->rotate == 270)
+      streamAspect = (float)config->streamHeight / (float)config->streamWidth;
+    else
+      streamAspect = (float)config->streamWidth / (float)config->streamHeight;
+    if (streamAspect >= touchAspect) { // bars on top/bottom
+      int streamHeight = touchWidth / streamAspect;
+      devices[dev].touchRefWidth = touchWidth;
+      devices[dev].touchRefHeight = streamHeight;
+      devices[dev].touchOffsetX = touchOffsetX;
+      devices[dev].touchOffsetY = touchOffsetY - (touchHeight - streamHeight) / 2;
+    } else { //bars on left/right
+      int streamWidth = touchHeight * streamAspect;
+      devices[dev].touchRefWidth = streamWidth;
+      devices[dev].touchRefHeight = touchHeight;
+      devices[dev].touchOffsetX = touchOffsetX - (touchWidth - streamWidth) / 2;
+      devices[dev].touchOffsetY = touchOffsetY;
+    }
+    fprintf(stdout, "abstouch %dx%d + %d,%d\n", devices[dev].touchRefWidth, devices[dev].touchRefHeight, devices[dev].touchOffsetX, devices[dev].touchOffsetY);
+    if (config->rotate == 90 || config->rotate == 270) {
+      int touchWidth = devices[dev].touchRefWidth;
+      devices[dev].touchRefWidth = devices[dev].touchRefHeight;
+      devices[dev].touchRefHeight = touchWidth;
+    }
+  }
 
   int nbuttons = 0;
   for (int i = BTN_JOYSTICK; i < KEY_MAX; ++i) {

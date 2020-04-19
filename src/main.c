@@ -28,6 +28,7 @@
 #include "video/video.h"
 
 #include "input/mapping.h"
+#include "input/input_config.h"
 #include "input/evdev.h"
 #include "input/udev.h"
 #ifdef HAVE_LIBCEC
@@ -192,7 +193,7 @@ static void help() {
   printf("\t-width <width>\t\tHorizontal resolution (default 1280)\n");
   printf("\t-height <height>\tVertical resolution (default 720)\n");
   #if defined(HAVE_PI) | defined(HAVE_MMAL)
-  printf("\t-rotate <height>\tRotate display: 0/90/180/270 (default 0)\n");
+  printf("\t-rotate <degrees>\tRotate display: 0/90/180/270 (default 0)\n");
   #endif
   printf("\t-fps <fps>\t\tSpecify the fps to use (default -1)\n");
   printf("\t-bitrate <bitrate>\tSpecify the bitrate in Kbps\n");
@@ -209,6 +210,7 @@ static void help() {
   printf("\t-unsupported\t\tTry streaming if GFE version or options are unsupported\n");
   printf("\t-quitappafter\t\tSend quit app request to remote after quitting session\n");
   printf("\t-viewonly\t\tDisable all input processing (view-only mode)\n");
+  printf("\t-abstouch\tMap touchscreen to absolute mouse position (not supported by some games)\n");
   #if defined(HAVE_SDL) || defined(HAVE_X11)
   printf("\n WM options (SDL and X11 only)\n\n");
   printf("\t-windowed\t\tDisplay screen in a window\n");
@@ -239,13 +241,19 @@ int main(int argc, char* argv[]) {
   if (config.debug_level > 0)
     printf("Moonlight Embedded %d.%d.%d (%s)\n", VERSION_MAJOR, VERSION_MINOR, VERSION_PATCH, COMPILE_OPTIONS);
 
+  struct input_config inputConfig;
+  inputConfig.rotate = config.rotate;
+  inputConfig.absTouch = config.abstouch;
+  inputConfig.streamWidth = config.stream.width;
+  inputConfig.streamHeight = config.stream.height;
+
   if (strcmp("map", config.action) == 0) {
     if (config.inputsCount != 1) {
       printf("You need to specify one input device using -input.\n");
       exit(-1);
     }
 
-    evdev_create(config.inputs[0], NULL, config.debug_level > 0, config.rotate);
+    evdev_create(config.inputs[0], NULL, config.debug_level > 0, &inputConfig);
     evdev_map(config.inputs[0]);
     exit(0);
   }
@@ -342,10 +350,10 @@ int main(int argc, char* argv[]) {
           if (config.debug_level > 0)
             printf("Add input %s...\n", config.inputs[i]);
 
-          evdev_create(config.inputs[i], mappings, config.debug_level > 0, config.rotate);
+          evdev_create(config.inputs[i], mappings, config.debug_level > 0, &inputConfig);
         }
 
-        udev_init(!inputAdded, mappings, config.debug_level > 0, config.rotate);
+        udev_init(!inputAdded, mappings, config.debug_level > 0, &inputConfig);
         evdev_init();
         rumble_handler = evdev_rumble;
         #ifdef HAVE_LIBCEC

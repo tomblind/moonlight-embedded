@@ -45,6 +45,7 @@ typedef struct _CONFIGURATION {
   bool viewonly;
   char* inputs[MAX_INPUTS];
   int inputsCount;
+  bool abstouch;
   enum codecs codec;
 } CONFIGURATION, *PCONFIGURATION;
 

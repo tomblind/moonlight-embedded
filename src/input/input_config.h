@@ -1,7 +1,7 @@
 /*
  * This file is part of Moonlight Embedded.
  *
- * Copyright (C) 2015 Iwan Timmer
+ * Copyright (C) 2015-2017 Iwan Timmer
  *
  * Moonlight is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -17,8 +17,11 @@
  * along with Moonlight; if not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "mapping.h"
-#include "input_config.h"
+#pragma once
 
-void udev_init(bool autoload, struct mapping* mappings, bool verbose, struct input_config* config);
-void evdev_destroy();
+struct input_config {
+  int rotate;
+  bool absTouch;
+  int streamWidth;
+  int streamHeight;
+};

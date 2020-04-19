@@ -18,10 +18,11 @@
  */
 
 #include "mapping.h"
+#include "input_config.h"
 
 extern int evdev_gamepads;
 
-void evdev_create(const char* device, struct mapping* mappings, bool verbose, int rotate);
+void evdev_create(const char* device, struct mapping* mappings, bool verbose, struct input_config* config);
 void evdev_loop();
 
 void evdev_init();
