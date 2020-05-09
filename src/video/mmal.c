@@ -29,6 +29,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 // Video decode on Raspberry Pi using MMAL
 // Based upon example code from the Raspberry Pi
 
+#include "video.h"
+
 #include <Limelight.h>
 
 #include <sps.h>
@@ -154,10 +156,25 @@ static int decoder_renderer_setup(int videoFormat, int width, int height, int re
   MMAL_DISPLAYREGION_T param;
   param.hdr.id = MMAL_PARAMETER_DISPLAYREGION;
   param.hdr.size = sizeof(MMAL_DISPLAYREGION_T);
-  param.set = MMAL_DISPLAY_SET_LAYER | MMAL_DISPLAY_SET_NUM | MMAL_DISPLAY_SET_FULLSCREEN;
+  param.set = MMAL_DISPLAY_SET_LAYER | MMAL_DISPLAY_SET_NUM | MMAL_DISPLAY_SET_FULLSCREEN | MMAL_DISPLAY_SET_TRANSFORM;
   param.layer = 128;
   param.display_num = 0;
   param.fullscreen = true;
+  int displayRotation = drFlags & DISPLAY_ROTATE_MASK;
+  switch (displayRotation) {
+  case DISPLAY_ROTATE_90:
+    param.transform = MMAL_DISPLAY_ROT90;
+    break;
+  case DISPLAY_ROTATE_180:
+    param.transform = MMAL_DISPLAY_ROT180;
+    break;
+  case DISPLAY_ROTATE_270:
+    param.transform = MMAL_DISPLAY_ROT270;
+    break;
+  default:
+    param.transform = MMAL_DISPLAY_ROT0;
+    break;
+  }
 
   if (mmal_port_parameter_set(renderer->input[0], &param.hdr) != MMAL_SUCCESS) {
     fprintf(stderr, "Can't set parameters\n");

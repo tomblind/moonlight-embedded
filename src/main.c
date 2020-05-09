@@ -118,6 +118,18 @@ static void stream(PSERVER_DATA server, PCONFIGURATION config, enum platform sys
   if (config->fullscreen)
     drFlags |= DISPLAY_FULLSCREEN;
 
+  switch (config->rotate) {
+  case 90:
+    drFlags |= DISPLAY_ROTATE_90;
+    break;
+  case 180:
+    drFlags |= DISPLAY_ROTATE_180;
+    break;
+  case 270:
+    drFlags |= DISPLAY_ROTATE_270;
+    break;
+  }
+
   if (config->debug_level > 0) {
     printf("Stream %d x %d, %d fps, %d kbps\n", config->stream.width, config->stream.height, config->stream.fps, config->stream.bitrate);
     connection_debug = true;
@@ -179,6 +191,9 @@ static void help() {
   printf("\t-4k\t\t\tUse 3840x2160 resolution\n");
   printf("\t-width <width>\t\tHorizontal resolution (default 1280)\n");
   printf("\t-height <height>\tVertical resolution (default 720)\n");
+  #if defined(HAVE_PI) | defined(HAVE_MMAL)
+  printf("\t-rotate <height>\tRotate display: 0/90/180/270 (default 0)\n");
+  #endif
   printf("\t-fps <fps>\t\tSpecify the fps to use (default -1)\n");
   printf("\t-bitrate <bitrate>\tSpecify the bitrate in Kbps\n");
   printf("\t-packetsize <size>\tSpecify the maximum packetsize in bytes\n");
@@ -230,7 +245,7 @@ int main(int argc, char* argv[]) {
       exit(-1);
     }
 
-    evdev_create(config.inputs[0], NULL, config.debug_level > 0);
+    evdev_create(config.inputs[0], NULL, config.debug_level > 0, config.rotate);
     evdev_map(config.inputs[0]);
     exit(0);
   }
@@ -327,10 +342,10 @@ int main(int argc, char* argv[]) {
           if (config.debug_level > 0)
             printf("Add input %s...\n", config.inputs[i]);
 
-          evdev_create(config.inputs[i], mappings, config.debug_level > 0);
+          evdev_create(config.inputs[i], mappings, config.debug_level > 0, config.rotate);
         }
 
-        udev_init(!inputAdded, mappings, config.debug_level > 0);
+        udev_init(!inputAdded, mappings, config.debug_level > 0, config.rotate);
         evdev_init();
         rumble_handler = evdev_rumble;
         #ifdef HAVE_LIBCEC
